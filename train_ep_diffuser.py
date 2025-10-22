@@ -9,8 +9,8 @@ from argparse import ArgumentParser
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import LearningRateMonitor
 from pytorch_lightning.callbacks import ModelCheckpoint
-from pytorch_lightning.strategies import DDPStrategy
-from pytorch_lightning.loggers import CSVLogger, TensorBoardLogger
+from pytorch_lightning.strategies import DDPStrategy, SingleDeviceStrategy
+from pytorch_lightning.loggers import CSVLogger, TensorBoardLogger, WandbLogger
 
 from datamodules import EPDataModule
 from predictors import EPDiffuser
@@ -47,6 +47,9 @@ if __name__ == '__main__':
     parser.add_argument('--accelerator', type=str, default='gpu')
     parser.add_argument('--devices', type=int, default=1)
     parser.add_argument('--max_epochs', type=int, default=64)
+    parser.add_argument('--project_name', type=str, default='EP-Diffuser', help='Wandb project name')
+    parser.add_argument('--experiment_name', type=str, default=None, help='Wandb experiment name')
+    parser.add_argument('--use_wandb', action='store_true', help='Use wandb logger instead of TensorBoard')
     EPDiffuser.add_model_specific_args(parser)
     args = parser.parse_args()
 
@@ -56,13 +59,35 @@ if __name__ == '__main__':
     
     model_checkpoint = ModelCheckpoint(monitor='val_minFDE_1', save_top_k=5, save_last = True, mode='min')
     lr_monitor = LearningRateMonitor(logging_interval="epoch")
-    csv_logger = CSVLogger(save_dir=log_dir, name='csv')
-    tb_logger = TensorBoardLogger(save_dir=log_dir, name='tb')
+    
+    # Configure loggers
+    loggers = []
+    if args.use_wandb:
+        experiment_name = args.experiment_name or f"EP-Diffuser-{current_time}"
+        wandb_logger = WandbLogger(
+            entity='iai',
+            project=args.project_name,
+            # name=experiment_name,
+            save_dir=log_dir,
+            log_model=True
+        )
+        loggers.append(wandb_logger)
+    else:
+        csv_logger = CSVLogger(save_dir=log_dir, name='csv')
+        tb_logger = TensorBoardLogger(save_dir=log_dir, name='tb')
+        loggers.extend([tb_logger, csv_logger])
+    
+    # Choose strategy based on number of devices
+    if args.devices > 1:
+        strategy = "ddp"  # Use DDP for multi-GPU
+    else:
+        strategy = "single_device"  # Explicitly use single device strategy
+    
     trainer = pl.Trainer(default_root_dir = log_dir,
                          accelerator=args.accelerator, devices=args.devices,
-                         strategy="auto",
+                        #  strategy=strategy,
                          callbacks=[model_checkpoint, lr_monitor], max_epochs=args.max_epochs,
-                         logger=[tb_logger, csv_logger])
+                         logger=loggers)
     trainer.fit(model, datamodule)
         
     

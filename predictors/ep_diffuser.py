@@ -135,8 +135,8 @@ class EPDiffuser(pl.LightningModule):
         
         loss_reg = loss_reg / reg_mask.sum().clamp_(min=1)
 
-        self.log('train_dn_loss', loss_dn, prog_bar=False, on_step=False, on_epoch=True, batch_size=1)
-        self.log('train_reg_loss', loss_reg, prog_bar=False, on_step=False, on_epoch=True, batch_size=1)
+        self.log('train_dn_loss', loss_dn, prog_bar=False, on_step=True, on_epoch=True, batch_size=1)
+        self.log('train_reg_loss', loss_reg, prog_bar=False, on_step=True, on_epoch=True, batch_size=1)
         loss = loss_dn #+ 0.2*loss_reg
         return loss
     
